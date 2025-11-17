@@ -1,4 +1,4 @@
-V1.6 修改仓库目录命名和优化bug
+V1.6 修改仓库目录命名和bug修复<br>
 V1.5 修改组件更新之后的bug,修改main/idf_component.yml->{<br>
     espressif2022/image_player: ==1.1.0<br>
     espressif2022/esp_emote_gfx: ==1.1.2<br>
