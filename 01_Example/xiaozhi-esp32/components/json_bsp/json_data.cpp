@@ -21,7 +21,6 @@ struct SpiRamAllocator : ArduinoJson::Allocator {
     }
 };
 
-
 static void log_json_data_t(json_data_t *data) {
     const char *TAG = "json_data";
     ESP_LOGI(TAG, "rtc:%d/%02d/%02d %02d:%02d:%02d", data->rtc_data.year,
