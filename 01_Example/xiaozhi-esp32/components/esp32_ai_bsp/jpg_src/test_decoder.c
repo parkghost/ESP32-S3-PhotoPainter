@@ -12,7 +12,7 @@
 static jpeg_pixel_format_t j_type     = JPEG_PIXEL_FORMAT_RGB888;
 static jpeg_rotate_t       j_rotation = JPEG_ROTATE_0D;
 
-jpeg_error_t esp_jpeg_decode_one_picture(uint8_t *input_buf, int len, uint8_t **output_buf, int *out_len)
+jpeg_error_t esp_jpeg_decode_one_picture(uint8_t *input_buf, int len, uint8_t **output_buf, int *out_len, int *width, int *height)
 {
     uint8_t *out_buf = NULL;
     jpeg_error_t ret = JPEG_ERR_OK;
@@ -60,6 +60,9 @@ jpeg_error_t esp_jpeg_decode_one_picture(uint8_t *input_buf, int len, uint8_t **
     }
 
     *out_len = out_info->width * out_info->height * 3;
+    if (width) *width = out_info->width;
+    if (height) *height = out_info->height;
+
     // Calloc out_put data buffer and update inbuf ptr and inbuf_len
     if (config.output_type == JPEG_PIXEL_FORMAT_RGB565_LE
         || config.output_type == JPEG_PIXEL_FORMAT_RGB565_BE

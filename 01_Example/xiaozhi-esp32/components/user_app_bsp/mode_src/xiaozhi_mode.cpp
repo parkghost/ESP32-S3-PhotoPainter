@@ -2,11 +2,13 @@
 #include "button_bsp.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "i2c_bsp.h"
 #include "led_bsp.h"
 #include "sdcard_bsp.h"
 #include "user_app.h"
+#include <cmath>
 #include <stdio.h>
 #include <string.h>
 
@@ -18,10 +20,17 @@
 #include "json_data.h"
 
 #include "esp32_ai_bsp.h"
+#include "gemini_image_bsp.h"
 
 #include "application.h"
 
-esp32_ai_bsp *dev_ai;
+// Abstract base class pointer for AI image generation
+static floyd_steinberg *dev_ai_base = NULL;
+static ai_provider_t current_provider = AI_PROVIDER_VOLCANO;
+
+// Typed pointers for each provider
+static esp32_ai_bsp *dev_ai_volcano = NULL;
+static gemini_image_bsp *dev_ai_gemini = NULL;
 
 static uint8_t *epd_blackImage = NULL; 
 static uint32_t Imagesize;             
@@ -35,35 +44,43 @@ int                sdcard_doc_count    = 0; // The index of the image  // Used i
 int                is_ai_img           = 1; // If the current process is refreshing, then the AI-generated images cannot be generated
 EventGroupHandle_t ai_IMG_Group;            // Task group for ai_IMG
 EventGroupHandle_t ai_IMG_Score_Group;      // Task group for polling and playing high-score images by AI in ai_IMG
+static bool        g_ai_direct_display = true; // AI image direct display mode (skip SD card I/O)
 
 char   *str_ai_chat_buff = NULL; // This is a text-to-image conversion. The default text length is 1024.
+#define STR_AI_CHAT_BUFF_SIZE 1024
 int     IMG_Score        = 0;    // Score the image
+gemini_aspect_ratio_t ai_img_aspect_ratio = ASPECT_RATIO_16_9;  // Default to landscape (16:9)
+scale_mode_t ai_img_scale_mode = SCALE_MODE_FILL;  // Default to fill (crop excess)
 list_t *sdcard_score     = NULL; // The high-score list requires memory allocation and deallocation
 char    score_name[100];         // Poll the current image
 
-char sleep_buff[18]; 
+char sleep_buff[64]; 
 
 SemaphoreHandle_t ai_img_while_semap; 
 
-void xiaozhi_init_received(const char *arg1) 
+void xiaozhi_init_received(const char *arg1)
 {
-    static uint8_t Oneime = 0;
-    if (Oneime)
+    static uint8_t one_time = 0;
+    if (one_time)
         return;
     if (strstr(arg1, "版本") != NULL) {
-        Oneime          = 1;
-        const char *str = auto_get_weather_json();
-        // ESP_LOGE("str","%s",str);
-        json_data = json_read_data(str);
-        xEventGroupSetBits(Red_led_Mode_queue, set_bit_button(0)); 
-        xEventGroupSetBits(epaper_groups, set_bit_button(0));
+        one_time = 1;
+        // Weather query disabled - not available outside China mainland
+        // const char *str = auto_get_weather_json();
+        // json_data = json_read_data(str);
+        json_data = NULL;
+        ESP_LOGI("xiaozhi", "Weather query disabled, skipping weather display");
+        xEventGroupSetBits(Red_led_Mode_queue, set_bit_button(0));
+        // Skip weather display on EPD - don't set epaper_groups bit 0
+        // xEventGroupSetBits(epaper_groups, set_bit_button(0));
     }
 }
 
 void xiaozhi_application_received(const char *str) {
     static bool is_led_flag = false;
     //ESP_LOGE("adasd", "%s", str);
-    strcpy(sleep_buff, str);
+    strncpy(sleep_buff, str, sizeof(sleep_buff) - 1);
+    sleep_buff[sizeof(sleep_buff) - 1] = '\0';
     if (is_led_flag) {
         if (strstr(sleep_buff, "idle") != NULL) {
             gpio_set_level((gpio_num_t) 45, 1);
@@ -80,7 +97,8 @@ void xiaozhi_application_received(const char *str) {
 void xiaozhi_ai_Message(const char *arg1, const char *arg2) //ai chat
 {
     if (!strcmp(arg1, "user")) {
-        strcpy(str_ai_chat_buff, arg2);
+        strncpy(str_ai_chat_buff, arg2, STR_AI_CHAT_BUFF_SIZE - 1);
+        str_ai_chat_buff[STR_AI_CHAT_BUFF_SIZE - 1] = '\0';
     }
 }
 
@@ -180,21 +198,86 @@ static void gui_user_Task(void *arg) {
                     GUI_ReadBmp_RGB_6Color(sdcard_Name_node->sdcard_name, 0, 0);
                     epaper_port_display(epd_blackImage); 
                 }
-            } else if (get_bit_button(even, 2)) {                       
+            } else if (get_bit_button(even, 2)) {
+                ESP_LOGI("epaper_showTask", "Received AI image display event");
                 list_node_t *node = list_at(sdcard_scan_listhandle, -1);
                 if (node != NULL) {
                     sdcard_node_t *sdcard_Name_node_ai = (sdcard_node_t *) node->val;
                     set_Currently_node(node);
+
+                    // Step 4: Read BMP from SD card - timing
+                    int64_t bmp_read_start = esp_timer_get_time();
+                    ESP_LOGI("epaper_showTask", "Loading BMP: %s", sdcard_Name_node_ai->sdcard_name);
                     GUI_ReadBmp_RGB_6Color(sdcard_Name_node_ai->sdcard_name, 0, 0);
-                    epaper_port_display(epd_blackImage); 
+                    int64_t bmp_read_end = esp_timer_get_time();
+                    int64_t bmp_read_ms = (bmp_read_end - bmp_read_start) / 1000;
+                    ESP_LOGI("epaper_showTask", "[TIMING] BMP read from SD card: %lld ms", bmp_read_ms);
+
+                    // Step 5: E-paper display refresh - timing
+                    int64_t epaper_start = esp_timer_get_time();
+                    ESP_LOGI("epaper_showTask", "Starting e-paper refresh...");
+                    epaper_port_display(epd_blackImage);
+                    int64_t epaper_end = esp_timer_get_time();
+                    int64_t epaper_ms = (epaper_end - epaper_start) / 1000;
+                    ESP_LOGI("epaper_showTask", "[TIMING] E-paper refresh: %lld ms (%.1f seconds)", epaper_ms, epaper_ms / 1000.0f);
+
+                    // Summary
+                    ESP_LOGI("epaper_showTask", "╔════════════════════════════════════════╗");
+                    ESP_LOGI("epaper_showTask", "║     DISPLAY TIMING SUMMARY             ║");
+                    ESP_LOGI("epaper_showTask", "╠════════════════════════════════════════╣");
+                    ESP_LOGI("epaper_showTask", "║ BMP Read:      %6lld ms              ║", bmp_read_ms);
+                    ESP_LOGI("epaper_showTask", "║ E-Paper:       %6lld ms (%5.1f s)    ║", epaper_ms, epaper_ms / 1000.0f);
+                    ESP_LOGI("epaper_showTask", "║ Total:         %6lld ms (%5.1f s)    ║", bmp_read_ms + epaper_ms, (bmp_read_ms + epaper_ms) / 1000.0f);
+                    ESP_LOGI("epaper_showTask", "╚════════════════════════════════════════╝");
+                } else {
+                    ESP_LOGE("epaper_showTask", "No node found in list");
                 }
-            } else if (get_bit_button(even, 3)) { 
+            } else if (get_bit_button(even, 3)) {
                 GUI_ReadBmp_RGB_6Color(score_name, 0, 0);
-                epaper_port_display(epd_blackImage); 
+                epaper_port_display(epd_blackImage);
+            } else if (get_bit_button(even, 4)) {
+                // Direct display from buffer (skip SD card I/O)
+                ESP_LOGI("epaper_showTask", "Received direct buffer display event");
+
+                if (dev_ai_gemini != NULL) {
+                    uint8_t *buffer = dev_ai_gemini->get_DitheredBuffer();
+                    int img_w = dev_ai_gemini->get_TargetWidth();
+                    int img_h = dev_ai_gemini->get_TargetHeight();
+
+                    if (buffer != NULL && img_w > 0 && img_h > 0) {
+                        // Direct draw from buffer - timing
+                        int64_t draw_start = esp_timer_get_time();
+                        ESP_LOGI("epaper_showTask", "Direct buffer draw: %dx%d", img_w, img_h);
+                        GUI_DirectDisplay_RGB888_6Color(buffer, img_w, img_h, 0, 0);
+                        int64_t draw_ms = (esp_timer_get_time() - draw_start) / 1000;
+                        ESP_LOGI("epaper_showTask", "[TIMING] Direct buffer draw: %lld ms", draw_ms);
+
+                        // E-paper display refresh - timing
+                        int64_t epaper_start = esp_timer_get_time();
+                        ESP_LOGI("epaper_showTask", "Starting e-paper refresh...");
+                        epaper_port_display(epd_blackImage);
+                        int64_t epaper_ms = (esp_timer_get_time() - epaper_start) / 1000;
+                        ESP_LOGI("epaper_showTask", "[TIMING] E-paper refresh: %lld ms", epaper_ms);
+
+                        // Summary
+                        ESP_LOGI("epaper_showTask", "╔════════════════════════════════════════╗");
+                        ESP_LOGI("epaper_showTask", "║  DIRECT DISPLAY TIMING SUMMARY         ║");
+                        ESP_LOGI("epaper_showTask", "╠════════════════════════════════════════╣");
+                        ESP_LOGI("epaper_showTask", "║ Buffer Draw:   %6lld ms (SD skipped) ║", draw_ms);
+                        ESP_LOGI("epaper_showTask", "║ E-Paper:       %6lld ms (%5.1f s)    ║", epaper_ms, epaper_ms / 1000.0f);
+                        ESP_LOGI("epaper_showTask", "║ Total:         %6lld ms (%5.1f s)    ║", draw_ms + epaper_ms, (draw_ms + epaper_ms) / 1000.0f);
+                        ESP_LOGI("epaper_showTask", "╚════════════════════════════════════════╝");
+                    } else {
+                        ESP_LOGE("epaper_showTask", "Direct buffer is NULL or invalid size");
+                    }
+                } else {
+                    ESP_LOGE("epaper_showTask", "Gemini provider not initialized");
+                }
             }
-            xSemaphoreGive(epaper_gui_semapHandle); 
-            Green_led_arg = 0;                      
-            is_ai_img     = 1;                      
+            xSemaphoreGive(epaper_gui_semapHandle);
+            Green_led_arg = 0;
+            is_ai_img     = 1;
+            ESP_LOGI("epaper_showTask", "Display complete, is_ai_img reset to 1, ready for next request");
         }
     }
 }
@@ -203,19 +286,47 @@ static void ai_IMG_Task(void *arg) {
     char *chatStr = (char *) arg;
     for (;;) {
         EventBits_t even = xEventGroupWaitBits(ai_IMG_Group, (0x01) | (0x02) | (0x04) | (0x08), pdTRUE, pdFALSE, portMAX_DELAY);
-        
+
         if (get_bit_button(even, 0)) {
             ESP_LOGE("chat", "%s", chatStr);
-            dev_ai->set_Chat(chatStr);         
-            char *str = dev_ai->get_ImgName(); 
-            if (str != NULL) {
-                sdcard_node_t *sdcard_node_data = (sdcard_node_t *) malloc(sizeof(sdcard_node_t));
-                assert(sdcard_node_data);
-                strcpy(sdcard_node_data->sdcard_name, str);
-                sdcard_node_data->name_score = 1;
-                list_rpush(sdcard_scan_listhandle, list_node_new(sdcard_node_data)); 
-                xEventGroupSetBits(epaper_groups, set_bit_button(2));                
+            char *str = NULL;
+
+            // Use the appropriate provider based on configuration
+            if (current_provider == AI_PROVIDER_GEMINI && dev_ai_gemini != NULL) {
+                dev_ai_gemini->set_AspectRatio(ai_img_aspect_ratio);
+                dev_ai_gemini->set_ScaleMode(ai_img_scale_mode);
+                dev_ai_gemini->set_Chat(chatStr);
+                // Use direct display mode if configured
+                str = dev_ai_gemini->get_ImgName_Direct(g_ai_direct_display);
+            } else if (dev_ai_volcano != NULL) {
+                dev_ai_volcano->set_Chat(chatStr);
+                str = dev_ai_volcano->get_ImgName();
+            } else {
+                ESP_LOGE("ai_IMG_Task", "No AI provider available (both gemini and volcano are NULL)");
             }
+
+            if (str != NULL) {
+                ESP_LOGI("ai_IMG_Task", "Image generation success, path: %s", str);
+
+                // Check if direct display mode
+                if (g_ai_direct_display && strcmp(str, "__DIRECT__") == 0) {
+                    // Direct display mode - trigger new event bit 4
+                    ESP_LOGI("ai_IMG_Task", "Triggering direct display (skip SD card)...");
+                    xEventGroupSetBits(epaper_groups, set_bit_button(4));
+                } else {
+                    // SD card mode - existing flow
+                    sdcard_node_t *sdcard_node_data = (sdcard_node_t *) malloc(sizeof(sdcard_node_t));
+                    assert(sdcard_node_data);
+                    strcpy(sdcard_node_data->sdcard_name, str);
+                    sdcard_node_data->name_score = 1;
+                    list_rpush(sdcard_scan_listhandle, list_node_new(sdcard_node_data));
+                    ESP_LOGI("ai_IMG_Task", "Triggering epaper display (from SD card)...");
+                    xEventGroupSetBits(epaper_groups, set_bit_button(2));
+                }
+            } else {
+                ESP_LOGE("ai_IMG_Task", "Image generation failed, str is NULL");
+            }
+            ESP_LOGI("ai_IMG_Task", "Image task complete, waiting for next event");
         } else if (get_bit_button(even, 1)) {
             sdcard_bmp_Quantity = list_iterator(); 
             xSemaphoreGive(ai_img_while_semap);    
@@ -333,16 +444,38 @@ void User_xiaozhi_app_init(void)                     // Initialization in the Xi
     gpio_set_level((gpio_num_t) 45, 0);
     dev_shtc3 = new i2c_equipment_shtc3();
     ai_img_while_semap = xSemaphoreCreateBinary();
-    str_ai_chat_buff   = (char *) heap_caps_malloc(1024, MALLOC_CAP_SPIRAM);
+    str_ai_chat_buff   = (char *) heap_caps_malloc(STR_AI_CHAT_BUFF_SIZE, MALLOC_CAP_SPIRAM);
     ai_IMG_Group       = xEventGroupCreate();
     ai_IMG_Score_Group = xEventGroupCreate();
     ai_model_t *ai_model_data = json_sdcard_txt_aimodel();
     if (ai_model_data != NULL) {                      //Obtain key, url, model
-        ESP_LOGI("ai_model", "model:%s,key:%s,url:%s", ai_model_data->model,ai_model_data->key,ai_model_data->url);
+        ESP_LOGI("ai_model", "model:%s,key:%s,url:%s,provider:%d",
+                 ai_model_data->model, ai_model_data->key, ai_model_data->url, ai_model_data->provider);
     } else {
         return;
     }
-    dev_ai = new esp32_ai_bsp(ai_model_data->model,ai_model_data->url,ai_model_data->key, 800, 480);
+
+    // Initialize the appropriate AI provider based on configuration
+    current_provider = ai_model_data->provider;
+    g_ai_direct_display = ai_model_data->ai_direct_display;
+    ESP_LOGI("ai_model", "AI direct display mode: %s", g_ai_direct_display ? "enabled" : "disabled");
+
+    if (current_provider == AI_PROVIDER_GEMINI) {
+        ESP_LOGI("ai_model", "Initializing Gemini image provider");
+        dev_ai_gemini = new gemini_image_bsp(ai_model_data->model, ai_model_data->key, 800, 480);
+        dev_ai_base = dev_ai_gemini;
+    } else {
+        ESP_LOGI("ai_model", "Initializing Volcano Engine image provider");
+        dev_ai_volcano = new esp32_ai_bsp(ai_model_data->model, ai_model_data->url, ai_model_data->key, 800, 480);
+        dev_ai_base = dev_ai_volcano;
+    }
+
+    // Verify AI provider was initialized successfully
+    if (dev_ai_base == NULL) {
+        ESP_LOGE("ai_model", "Failed to initialize AI provider, aborting");
+        return;
+    }
+
     //if(ai_model_data != NULL) {free(ai_model_data);ai_model_data = NULL;}
     list_scan_dir("/sdcard/05_user_ai_img"); // Place the image data under the linked list
     sdcard_bmp_Quantity = list_iterator();   // Traverse the linked list to count the number of images

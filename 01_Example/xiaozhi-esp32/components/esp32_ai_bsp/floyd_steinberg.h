@@ -36,7 +36,7 @@ private:
 public:
     floyd_steinberg();
     ~floyd_steinberg();
-	uint8_t Jpeg_decode(uint8_t* inbuffer,int inlen,uint8_t** outbuffer,int* outlen);// Decode RGB888 data, *outbuffer: No memory allocation required
+	uint8_t Jpeg_decode(uint8_t* inbuffer,int inlen,uint8_t** outbuffer,int* outlen, int* width, int* height);// Decode RGB888 data, *outbuffer: No memory allocation required
 	void Jpeg_dec_buffer_free(uint8_t* outbuffer);                   // Remember to release the outbuffer when the usage is completed.
 	void dither_fs_rgb888(uint8_t *in_img, uint8_t *out_img, int w, int h); // Jitter Algorithm
 	int rgb888_to_sdcard_bmp(const char *filename, const uint8_t *rgb888, int width, int height); //  Convert RGB888 to BMP

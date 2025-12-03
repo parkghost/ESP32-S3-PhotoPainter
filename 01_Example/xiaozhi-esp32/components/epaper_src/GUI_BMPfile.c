@@ -550,15 +550,38 @@ UBYTE GUI_ReadBmp_RGB_6Color(const char *path, UWORD Xstart, UWORD Ystart)
         }
     }
     fclose(fp);
-   
-    // Refresh the image to the display buffer based on the displayed orientation
-    for(y = 0; y < bmpInfoHeader.biHeight; y++) {
-        for(x = 0; x < bmpInfoHeader.biWidth; x++) {
-            if(x > Paint.Width || y > Paint.Height) {
-                break;
+
+    // Detect portrait mode (height > width) and rotate 90° CW when drawing
+    int is_portrait = (bmpInfoHeader.biHeight > bmpInfoHeader.biWidth);
+
+    if (is_portrait) {
+        ESP_LOGI(TAG, "Portrait image detected (%ldx%ld), rotating 90° CW for display",
+                 bmpInfoHeader.biWidth, bmpInfoHeader.biHeight);
+        // Rotate 90° CW: src(x, y) -> dst(src_h - 1 - y, x)
+        // After rotation: display width = biHeight, display height = biWidth
+        for(y = 0; y < bmpInfoHeader.biHeight; y++) {
+            for(x = 0; x < bmpInfoHeader.biWidth; x++) {
+                // Calculate rotated position
+                UWORD dst_x = bmpInfoHeader.biHeight - 1 - y;
+                UWORD dst_y = x;
+                if(Xstart + dst_x > Paint.Width || Ystart + dst_y > Paint.Height) {
+                    continue;
+                }
+                Paint_SetPixel(Xstart + dst_x, Ystart + dst_y,
+                    Image[bmpInfoHeader.biHeight * bmpInfoHeader.biWidth - 1 - (bmpInfoHeader.biWidth - x - 1 + (y * bmpInfoHeader.biWidth))]);
             }
-            Paint_SetPixel(Xstart + x, Ystart + y, Image[bmpInfoHeader.biHeight *  bmpInfoHeader.biWidth - 1 -(bmpInfoHeader.biWidth-x-1+(y* bmpInfoHeader.biWidth))]);
-		}
+        }
+    } else {
+        // Landscape mode: draw normally
+        for(y = 0; y < bmpInfoHeader.biHeight; y++) {
+            for(x = 0; x < bmpInfoHeader.biWidth; x++) {
+                if(x > Paint.Width || y > Paint.Height) {
+                    break;
+                }
+                Paint_SetPixel(Xstart + x, Ystart + y,
+                    Image[bmpInfoHeader.biHeight * bmpInfoHeader.biWidth - 1 - (bmpInfoHeader.biWidth - x - 1 + (y * bmpInfoHeader.biWidth))]);
+            }
+        }
     }
     heap_caps_free(Image);
     Image = NULL;
@@ -686,4 +709,79 @@ UBYTE GUI_ReadBmp_RGB_6Color(const char *path, UWORD Xstart, UWORD Ystart)
 uint8_t GUI_RGB888_6Color(uint8_t *buffer,int Height,int Width)
 {
     return true;
+}
+
+/**
+ * @brief Direct display RGB888 dithered buffer to e-paper
+ * @param rgb888_buffer: Floyd-Steinberg dithered RGB888 buffer (only contains 6 palette colors)
+ * @param width: Image width
+ * @param height: Image height
+ * @param Xstart: X offset in Paint buffer
+ * @param Ystart: Y offset in Paint buffer
+ * @return 0 on success, 1 on error
+ */
+UBYTE GUI_DirectDisplay_RGB888_6Color(const uint8_t *rgb888_buffer,
+                                       UWORD width, UWORD height,
+                                       UWORD Xstart, UWORD Ystart)
+{
+    if (rgb888_buffer == NULL) {
+        ESP_LOGE(TAG, "RGB888 buffer is NULL");
+        return 1;
+    }
+
+    ESP_LOGI(TAG, "Direct display RGB888 buffer: %ux%u at (%u, %u)",
+             (unsigned)width, (unsigned)height, (unsigned)Xstart, (unsigned)Ystart);
+
+    // Detect portrait mode (height > width) and rotate 90° CW when drawing
+    int is_portrait = (height > width);
+
+    if (is_portrait) {
+        ESP_LOGI(TAG, "Portrait image detected, rotating 90 degrees CW for display");
+    }
+
+    for (UWORD y = 0; y < height; y++) {
+        for (UWORD x = 0; x < width; x++) {
+            // Get RGB values from dithered buffer (RGB888 format)
+            const uint8_t *pixel = rgb888_buffer + ((UDOUBLE)y * width + x) * 3;
+            uint8_t r = pixel[0];
+            uint8_t g = pixel[1];
+            uint8_t b = pixel[2];
+
+            // Map dithered RGB to 6-color palette index
+            // Floyd-Steinberg palette: Black, White, Red, Green, Blue, Yellow
+            UBYTE color;
+            if (r == 0 && g == 0 && b == 0) {
+                color = 0; // Black
+            } else if (r == 255 && g == 255 && b == 255) {
+                color = 1; // White
+            } else if (r == 255 && g == 255 && b == 0) {
+                color = 2; // Yellow
+            } else if (r == 255 && g == 0 && b == 0) {
+                color = 3; // Red
+            } else if (r == 0 && g == 0 && b == 255) {
+                color = 5; // Blue
+            } else if (r == 0 && g == 255 && b == 0) {
+                color = 6; // Green
+            } else {
+                color = 1; // Default to white for unexpected colors
+            }
+
+            if (is_portrait) {
+                // Rotate 90° CW: src(x, y) -> dst(src_h - 1 - y, x)
+                UWORD dst_x = height - 1 - y;
+                UWORD dst_y = x;
+                if (Xstart + dst_x < Paint.Width && Ystart + dst_y < Paint.Height) {
+                    Paint_SetPixel(Xstart + dst_x, Ystart + dst_y, color);
+                }
+            } else {
+                // Landscape mode: draw normally
+                if (Xstart + x < Paint.Width && Ystart + y < Paint.Height) {
+                    Paint_SetPixel(Xstart + x, Ystart + y, color);
+                }
+            }
+        }
+    }
+
+    ESP_LOGI(TAG, "Direct display completed");
+    return 0;
 }

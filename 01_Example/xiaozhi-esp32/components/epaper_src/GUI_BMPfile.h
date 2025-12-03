@@ -98,6 +98,11 @@ UBYTE GUI_ReadBmp_RGB_4Color(const char *path, UWORD Xstart, UWORD Ystart);
 UBYTE GUI_ReadBmp_RGB_6Color(const char *path, UWORD Xstart, UWORD Ystart);
 UBYTE GUI_ReadBmp_RGB_7Color(const char *path, UWORD Xstart, UWORD Ystart);
 
+// Direct display from RGB888 buffer (skip SD card I/O)
+UBYTE GUI_DirectDisplay_RGB888_6Color(const uint8_t *rgb888_buffer,
+                                       UWORD width, UWORD height,
+                                       UWORD Xstart, UWORD Ystart);
+
 
 #ifdef __cplusplus
 }

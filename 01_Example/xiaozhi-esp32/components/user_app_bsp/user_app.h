@@ -1,6 +1,7 @@
 #ifndef USER_APP_H
 #define USER_APP_H
 #include "freertos/FreeRTOS.h"
+#include "gemini_image_bsp.h"
 
 
 uint8_t User_Mode_init(void);       // main.cc
@@ -28,7 +29,10 @@ extern EventGroupHandle_t ai_IMG_Group;
 extern int IMG_Score; 
 extern SemaphoreHandle_t
     ai_img_while_semap; 
-extern EventGroupHandle_t ai_IMG_Score_Group; 
+extern EventGroupHandle_t ai_IMG_Score_Group;
+extern char *str_ai_chat_buff;  // AI image generation prompt buffer (1024 bytes)
+extern gemini_aspect_ratio_t ai_img_aspect_ratio;  // AI image aspect ratio (16:9 or 9:16)
+extern scale_mode_t ai_img_scale_mode;  // AI image scale mode (fill or fit)
 
 
 void User_Basic_mode_app_init(void);

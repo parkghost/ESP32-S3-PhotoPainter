@@ -273,16 +273,41 @@ ai_model_t *json_sdcard_txt_aimodel(void) {
     }
     strcpy(data->model,str);
     str   = doc["ai_url"];
-    if(str == NULL) {
-        ESP_LOGE("sdcardjson", "AI URL parsing failed");
-        return NULL;
+    // URL is optional for Gemini provider
+    if(str != NULL) {
+        strcpy(data->url, str);
+    } else {
+        data->url[0] = '\0';
     }
-    strcpy(data->url,str);
     str   = doc["ai_key"];
     if(str == NULL) {
         ESP_LOGE("sdcardjson", "AI key parsing failed");
         return NULL;
     }
     strcpy(data->key,str);
+
+    // Parse provider field, auto-detect from model name if not specified
+    str = doc["ai_provider"];
+    if(str != NULL && strcmp(str, "gemini") == 0) {
+        data->provider = AI_PROVIDER_GEMINI;
+        ESP_LOGI("sdcardjson", "Using Gemini provider (explicit)");
+    } else if(str != NULL && strcmp(str, "volcano") == 0) {
+        data->provider = AI_PROVIDER_VOLCANO;
+        ESP_LOGI("sdcardjson", "Using Volcano provider (explicit)");
+    } else {
+        // Auto-detect from model name
+        if(strstr(data->model, "gemini") != NULL) {
+            data->provider = AI_PROVIDER_GEMINI;
+            ESP_LOGI("sdcardjson", "Using Gemini provider (auto-detected from model name)");
+        } else {
+            data->provider = AI_PROVIDER_VOLCANO;
+            ESP_LOGI("sdcardjson", "Using Volcano provider (default)");
+        }
+    }
+
+    // Parse ai_direct_display option (default: false for backward compatibility)
+    data->ai_direct_display = doc["ai_direct_display"] | false;
+    ESP_LOGI("sdcardjson", "AI direct display: %s", data->ai_direct_display ? "enabled" : "disabled");
+
     return data;
 }

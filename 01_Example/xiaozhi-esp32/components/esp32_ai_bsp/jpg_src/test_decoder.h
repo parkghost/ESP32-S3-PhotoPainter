@@ -26,12 +26,14 @@ typedef struct esp_jpeg_stream *esp_jpeg_stream_handle_t;
  * @param  len         Length of the input buffer in bytes
  * @param  output_buf  Pointer to output buffer, allocated in `esp_jpeg_decoder_one_picture` but it won't to free. Please release this buffer after decoding is complete.
  * @param  out_len     Acturally output length in bytes
+ * @param  width       Pointer to store image width
+ * @param  height      Pointer to store image height
  *
  * @return
  *       - JPEG_ERR_OK  Succeeded
  *       - Others       Failed
  */
-jpeg_error_t esp_jpeg_decode_one_picture(uint8_t *input_buf, int len, uint8_t **output_buf, int *out_len);
+jpeg_error_t esp_jpeg_decode_one_picture(uint8_t *input_buf, int len, uint8_t **output_buf, int *out_len, int *width, int *height);
 
 /**
  * @brief  Decode a single JPEG picture with block deocder API

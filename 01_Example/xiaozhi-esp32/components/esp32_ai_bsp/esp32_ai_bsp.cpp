@@ -184,7 +184,7 @@ char *esp32_ai_bsp::get_ImgName() {
         return NULL;
     }
     int dec_jpg_size = 0;
-    if (Jpeg_decode(jpg_buffer, jpg_size, &jpg_dec_buffer, &dec_jpg_size) == 0) {
+    if (Jpeg_decode(jpg_buffer, jpg_size, &jpg_dec_buffer, &dec_jpg_size, &_width, &_height) == 0) {
         ESP_LOGE(TAG, "jpg dec fill");
         if (jpg_dec_buffer != NULL) {
             Jpeg_dec_buffer_free(jpg_dec_buffer);

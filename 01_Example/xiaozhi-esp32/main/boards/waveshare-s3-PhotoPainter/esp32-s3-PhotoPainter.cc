@@ -76,12 +76,61 @@ class waveshare_PhotoPainter : public WifiBoard {
             }
         });
 
-        mcp_server.AddTool("self.disp.aiIMG", "这个是用户可以根据语音生成图片的(图片生成大概需要10-20s时间),比如：帮我生成一张动漫图片,直接生成就好，不要回复乱七八糟的东西", PropertyList(), [this](const PropertyList &) -> ReturnValue {
+        mcp_server.AddTool("self.disp.aiIMG", "根據使用者描述產生 AI 圖片並顯示在電子墨水屏上。\n"
+            "參數:\n"
+            "  - prompt: 描述要生成的圖片內容（如 '一隻可愛的貓咪在草地上玩耍'）\n"
+            "  - orientation: 圖片方向，'landscape'（橫式）或 'portrait'（直式）\n"
+            "  - scale_mode: 縮放模式，'fill'（填滿裁切，預設）或 'fit'（完整顯示留白）",
+            PropertyList({
+                Property("prompt", kPropertyTypeString),
+                Property("orientation", kPropertyTypeString),
+                Property("scale_mode", kPropertyTypeString)
+            }), [this](const PropertyList &properties) -> ReturnValue {
             ESP_LOGI("MCP", "进入MCP aiIMG");
-            if (!is_ai_img) { //Indicates that the image is being refreshed
-                ESP_LOGE("MCP", "is_ai_img fill %d", is_ai_img);
+            // Get the prompt from MCP parameter
+            std::string prompt = properties["prompt"].value<std::string>();
+            std::string orientation = properties["orientation"].value<std::string>();
+            std::string scale_mode = properties["scale_mode"].value<std::string>();
+            ESP_LOGI("MCP", "Received prompt: %s, orientation: %s, scale_mode: %s", prompt.c_str(), orientation.c_str(), scale_mode.c_str());
+
+            if (prompt.empty()) {
+                ESP_LOGE("MCP", "Empty prompt received");
                 return false;
             }
+
+            // Set aspect ratio based on orientation parameter
+            if (orientation == "portrait" || orientation == "9:16") {
+                ai_img_aspect_ratio = ASPECT_RATIO_9_16;
+                ESP_LOGI("MCP", "Set aspect ratio to portrait (9:16)");
+            } else {
+                ai_img_aspect_ratio = ASPECT_RATIO_16_9;
+                ESP_LOGI("MCP", "Set aspect ratio to landscape (16:9)");
+            }
+
+            // Set scale mode based on scale_mode parameter
+            if (scale_mode == "fit") {
+                ai_img_scale_mode = SCALE_MODE_FIT;
+                ESP_LOGI("MCP", "Set scale mode to fit (show all, pad with white)");
+            } else {
+                ai_img_scale_mode = SCALE_MODE_FILL;
+                ESP_LOGI("MCP", "Set scale mode to fill (crop excess)");
+            }
+
+            // Copy prompt to the shared buffer (max 1024 bytes)
+            strncpy(str_ai_chat_buff, prompt.c_str(), 1023);
+            str_ai_chat_buff[1023] = '\0';
+
+            // Wait for display to be ready (max 10 seconds)
+            int wait_count = 0;
+            while (!is_ai_img && wait_count < 100) {
+                vTaskDelay(pdMS_TO_TICKS(100));
+                wait_count++;
+            }
+            if (!is_ai_img) { //Indicates that the image is still being refreshed after timeout
+                ESP_LOGE("MCP", "is_ai_img timeout, display still busy");
+                return false;
+            }
+            ESP_LOGI("MCP", "Display ready, starting AI image generation with prompt: %s", str_ai_chat_buff);
             xEventGroupClearBits(ai_IMG_Score_Group, 0x01); //There is no need to poll for photos anymore.
             xEventGroupSetBits(ai_IMG_Group, 0x01);         //Indicates that access to the volcano is permitted to obtain IMG.
             return true;

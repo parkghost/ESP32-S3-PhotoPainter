@@ -29,12 +29,12 @@ floyd_steinberg::floyd_steinberg() {
 floyd_steinberg::~floyd_steinberg() {
 }
 
-uint8_t floyd_steinberg::Jpeg_decode(uint8_t *inbuffer, int inlen, uint8_t **outbuffer, int *outlen) {
+uint8_t floyd_steinberg::Jpeg_decode(uint8_t *inbuffer, int inlen, uint8_t **outbuffer, int *outlen, int *width, int *height) {
     if (inbuffer == NULL) {
         ESP_LOGE(TAG, "jpeg_decode fill inbuffer is NULL");
         return 0;
     }
-    if (esp_jpeg_decode_one_picture(inbuffer, inlen, outbuffer, outlen) == JPEG_ERR_OK) {
+    if (esp_jpeg_decode_one_picture(inbuffer, inlen, outbuffer, outlen, width, height) == JPEG_ERR_OK) {
         return 1;
     }
     return 0;

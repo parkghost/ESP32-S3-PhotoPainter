@@ -47,12 +47,20 @@ typedef struct
     uint8_t color;          // Background color
 }json_aqi_t;
 
-typedef struct 
+// AI image provider types
+typedef enum {
+    AI_PROVIDER_VOLCANO = 0,  // Volcano Engine (default)
+    AI_PROVIDER_GEMINI = 1    // Google Gemini
+} ai_provider_t;
+
+typedef struct
 {
     int time;
     char url[100];
     char model[100];
     char key[100];
+    ai_provider_t provider;       // AI provider: volcano or gemini
+    bool ai_direct_display;       // AI image direct display (skip SD card I/O)
 }ai_model_t;
 
 json_data_t *json_read_data(const char *jsonStr);
