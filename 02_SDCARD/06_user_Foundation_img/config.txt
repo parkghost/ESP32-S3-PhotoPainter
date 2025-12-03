@@ -1,8 +1,17 @@
 {
   "timer": 1200,
   "ai_provider": "gemini",
-  "ai_model": "gemini-2.5-flash-image",
-  "ai_url": "",
+  "ai_model": "gemini-3-pro-image-preview",
   "ai_key": "YOUR_GEMINI_API_KEY",
-  "ai_direct_display": true
+  "ai_direct_display": true,
+  "dither_kernel": "jarvis",
+  "dither_serpentine": true,
+  "dither_color_calibration": {
+    "black": [25, 30, 33],
+    "white": [232, 232, 232],
+    "red": [178, 19, 24],
+    "green": [18, 95, 32],
+    "blue": [33, 87, 186],
+    "yellow": [239, 222, 68]
+  }
 }
