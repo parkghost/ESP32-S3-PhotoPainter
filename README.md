@@ -11,6 +11,15 @@ Product English wiki link: https://www.waveshare.com/wiki/ESP32-S3-PhotoPainter
 ### 直接顯示模式
 跳過 SD 卡寫入/讀取流程，每張圖像可節省 40 秒
 
+### 抖動演算法與色彩校正
+
+基於 [epdoptimize](https://github.com/Utzel-Butzel/epdoptimize) 優化，提供更優質的 6 色電子紙顯示效果：
+
+- **多種抖動核心**：Jarvis（預設，最佳品質）、Stucki、Sierra-2-4A、Floyd-Steinberg
+- **蛇形掃描**：減少條紋瑕疵
+- **感知色彩距離**：Redmean 公式，更符合人眼感知
+- **可配置調色板**：支援自訂 6 色調色板校準
+
 ## 已關閉的功能
 
 - **天氣資訊**：已停用(限中國大陸使用)
@@ -26,9 +35,21 @@ Product English wiki link: https://www.waveshare.com/wiki/ESP32-S3-PhotoPainter
   "ai_model": "gemini-2.5-flash-image",
   "ai_url": "",
   "ai_key": "YOUR_GEMINI_API_KEY",
-  "ai_direct_display": true
+  "ai_direct_display": true,
+  "dither_kernel": "jarvis",
+  "dither_serpentine": true,
+  "dither_color_calibration": {
+    "black": [0, 0, 0],
+    "white": [255, 255, 255],
+    "red": [200, 0, 0],
+    "green": [0, 180, 0],
+    "blue": [0, 0, 200],
+    "yellow": [230, 230, 0]
+  }
 }
 ```
+
+#### 基本設定
 
 | 欄位 | 值 | 說明 |
 |------|-----|------|
@@ -38,6 +59,14 @@ Product English wiki link: https://www.waveshare.com/wiki/ESP32-S3-PhotoPainter
 | `ai_url` | 空字串或自訂 URL | API 端點 URL（Gemini 可留空使用預設值） |
 | `ai_key` | `YOUR_GEMINI_API_KEY` | API 金鑰（必填） |
 | `ai_direct_display` | `true` / `false` | 跳過 SD 卡 I/O 以加快顯示速度 |
+
+#### 抖動演算法與色彩校正
+
+| 欄位 | 預設值 | 說明 |
+|------|--------|------|
+| `dither_kernel` | `jarvis` | 抖動演算法：`jarvis`（最佳品質）、`stucki`、`sierra`、`floyd_steinberg` |
+| `dither_serpentine` | `true` | 蛇形掃描，減少條紋瑕疵 |
+| `dither_color_calibration` | 標準 RGB | 6 色校準值（key-value 格式），用於抖動時的色彩匹配 |
 
 #### aiIMG MCP 工具說明 (xiaozhi.me)
 

@@ -3,7 +3,7 @@
 
 #include "ArduinoJson-v7.4.1.h"
 #include "esp_http_client.h"
-#include "floyd_steinberg.h"
+#include "dither_engine.h"
 
 // HTTP response callback structure
 typedef struct {
@@ -28,7 +28,7 @@ typedef enum {
  * Uses Google Gemini API (gemini-2.5-flash-image) for image generation
  * Returns base64-encoded PNG images instead of URLs
  */
-class gemini_image_bsp : public floyd_steinberg
+class gemini_image_bsp : public dither_engine
 {
 private:
     JsonDocument doc;

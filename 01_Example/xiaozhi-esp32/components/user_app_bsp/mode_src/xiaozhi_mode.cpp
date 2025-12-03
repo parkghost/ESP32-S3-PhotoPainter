@@ -25,7 +25,7 @@
 #include "application.h"
 
 // Abstract base class pointer for AI image generation
-static floyd_steinberg *dev_ai_base = NULL;
+static dither_engine *dev_ai_base = NULL;
 static ai_provider_t current_provider = AI_PROVIDER_VOLCANO;
 
 // Typed pointers for each provider
@@ -475,6 +475,9 @@ void User_xiaozhi_app_init(void)                     // Initialization in the Xi
         ESP_LOGE("ai_model", "Failed to initialize AI provider, aborting");
         return;
     }
+
+    // Apply dither configuration from config.txt
+    dev_ai_base->set_config(&ai_model_data->dither);
 
     //if(ai_model_data != NULL) {free(ai_model_data);ai_model_data = NULL;}
     list_scan_dir("/sdcard/05_user_ai_img"); // Place the image data under the linked list

@@ -191,7 +191,7 @@ char *esp32_ai_bsp::get_ImgName() {
         }
         return NULL;
     }
-    dither_fs_rgb888(jpg_dec_buffer, floyd_buffer, _width, _height); //The RGB888 data has undergone the jittering algorithm.
+    dither_rgb888(jpg_dec_buffer, floyd_buffer, _width, _height); // Apply dithering algorithm to RGB888 data
     Jpeg_dec_buffer_free(jpg_dec_buffer);                            //Release memory
     snprintf(sdcard_path, 98, "/sdcard/05_user_ai_img/ai_%d.bmp", path_value);
     if (rgb888_to_sdcard_bmp(sdcard_path, floyd_buffer, _width, _height) != 0) {

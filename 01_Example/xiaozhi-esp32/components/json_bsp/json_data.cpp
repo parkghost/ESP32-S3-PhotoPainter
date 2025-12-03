@@ -309,5 +309,51 @@ ai_model_t *json_sdcard_txt_aimodel(void) {
     data->ai_direct_display = doc["ai_direct_display"] | false;
     ESP_LOGI("sdcardjson", "AI direct display: %s", data->ai_direct_display ? "enabled" : "disabled");
 
+    // Parse dither_kernel (default: jarvis for best quality)
+    const char *kernel_str = doc["dither_kernel"] | "jarvis";
+    if (strcmp(kernel_str, "floyd_steinberg") == 0) {
+        data->dither.kernel = DITHER_FLOYD_STEINBERG;
+    } else if (strcmp(kernel_str, "stucki") == 0) {
+        data->dither.kernel = DITHER_STUCKI;
+    } else if (strcmp(kernel_str, "sierra") == 0) {
+        data->dither.kernel = DITHER_SIERRA_2_4A;
+    } else {
+        data->dither.kernel = DITHER_JARVIS;  // Default: best quality
+    }
+
+    // Parse dither_serpentine (default: true for better results)
+    data->dither.serpentine = doc["dither_serpentine"] | true;
+
+    // Parse dither_color_calibration (key-value format, default: standard RGB)
+    // Color order: black(0), white(1), red(2), green(3), blue(4), yellow(5)
+    static const uint8_t DEFAULT_PALETTE[6][3] = {
+        {0, 0, 0},       // Black
+        {255, 255, 255}, // White
+        {255, 0, 0},     // Red
+        {0, 255, 0},     // Green
+        {0, 0, 255},     // Blue
+        {255, 255, 0}    // Yellow
+    };
+    memcpy(data->dither.palette, DEFAULT_PALETTE, sizeof(DEFAULT_PALETTE));
+
+    JsonObject calibration = doc["dither_color_calibration"];
+    if (!calibration.isNull()) {
+        // Parse each color by key name
+        const char *color_keys[] = {"black", "white", "red", "green", "blue", "yellow"};
+        for (int i = 0; i < 6; i++) {
+            JsonArray color = calibration[color_keys[i]];
+            if (color.size() == 3) {
+                data->dither.palette[i][0] = color[0];
+                data->dither.palette[i][1] = color[1];
+                data->dither.palette[i][2] = color[2];
+            }
+        }
+        ESP_LOGI("sdcardjson", "Dither color calibration loaded from config");
+    }
+
+    const char *kernel_names[] = {"Floyd-Steinberg", "Jarvis", "Stucki", "Sierra-2-4A"};
+    ESP_LOGI("sdcardjson", "Dither config: kernel=%s, serpentine=%s",
+             kernel_names[data->dither.kernel], data->dither.serpentine ? "true" : "false");
+
     return data;
 }

@@ -2,6 +2,7 @@
 #define JSON_DATA_H
 
 #include "i2c_equipment.h"
+#include "dither_types.h"
 
 typedef struct
 {
@@ -61,6 +62,7 @@ typedef struct
     char key[100];
     ai_provider_t provider;       // AI provider: volcano or gemini
     bool ai_direct_display;       // AI image direct display (skip SD card I/O)
+    dither_config_t dither;       // Dithering configuration
 }ai_model_t;
 
 json_data_t *json_read_data(const char *jsonStr);

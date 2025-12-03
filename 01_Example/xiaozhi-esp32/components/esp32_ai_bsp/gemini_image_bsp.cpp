@@ -663,16 +663,16 @@ const char* gemini_image_bsp::gemini_generate_image(bool skip_sd_save) {
         ESP_LOGI(TAG, "[TIMING] Resize: skipped (same size)");
     }
 
-    // === TIMING: Floyd-Steinberg Dithering ===
+    // === TIMING: Dithering ===
     start_time = esp_timer_get_time();
 
-    // Apply Floyd-Steinberg dithering
-    ESP_LOGI(TAG, "Applying Floyd-Steinberg dithering (target: %dx%d)...", target_w, target_h);
-    dither_fs_rgb888(dither_input, floyd_buffer, target_w, target_h);
+    // Apply dithering (uses configured kernel: Jarvis, Stucki, Sierra, or Floyd-Steinberg)
+    ESP_LOGI(TAG, "Applying dithering (target: %dx%d)...", target_w, target_h);
+    dither_rgb888(dither_input, floyd_buffer, target_w, target_h);
 
     end_time = esp_timer_get_time();
     stats.dither_us = end_time - start_time;
-    ESP_LOGI(TAG, "[TIMING] Floyd-Steinberg dithering: %lld ms", stats.dither_us / 1000);
+    ESP_LOGI(TAG, "[TIMING] Dithering: %lld ms", stats.dither_us / 1000);
     ESP_LOGI(TAG, "Dithering complete");
 
     // Store dimensions for direct display accessor
@@ -733,7 +733,7 @@ const char* gemini_image_bsp::gemini_generate_image(bool skip_sd_save) {
              stats.image_format, stats.image_decode_us / 1000, (float)stats.image_decode_us / stats.total_us * 100);
     ESP_LOGI(TAG, "║ Resize                   │ %10lld │ %5.1f%%               ║",
              stats.resize_us / 1000, (float)stats.resize_us / stats.total_us * 100);
-    ESP_LOGI(TAG, "║ Floyd-Steinberg Dither   │ %10lld │ %5.1f%%               ║",
+    ESP_LOGI(TAG, "║ Dithering                │ %10lld │ %5.1f%%               ║",
              stats.dither_us / 1000, (float)stats.dither_us / stats.total_us * 100);
     if (!skip_sd_save) {
         ESP_LOGI(TAG, "║ Save BMP to SD           │ %10lld │ %5.1f%%               ║",

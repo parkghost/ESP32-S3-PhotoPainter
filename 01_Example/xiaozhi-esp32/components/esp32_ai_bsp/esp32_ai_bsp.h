@@ -3,7 +3,7 @@
 
 #include "ArduinoJson-v7.4.1.h"
 #include "esp_http_client.h"
-#include "floyd_steinberg.h"
+#include "dither_engine.h"
 
 /* HTTP POST callback, used to collect the JSON returned by Ark*/
 typedef struct {
@@ -11,7 +11,7 @@ typedef struct {
     int buffer_len;
 } http_response_t;
 
-class esp32_ai_bsp : public floyd_steinberg
+class esp32_ai_bsp : public dither_engine
 {
 private:
     JsonDocument doc;

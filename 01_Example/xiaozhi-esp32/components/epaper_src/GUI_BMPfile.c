@@ -713,7 +713,7 @@ uint8_t GUI_RGB888_6Color(uint8_t *buffer,int Height,int Width)
 
 /**
  * @brief Direct display RGB888 dithered buffer to e-paper
- * @param rgb888_buffer: Floyd-Steinberg dithered RGB888 buffer (only contains 6 palette colors)
+ * @param rgb888_buffer: Dithered RGB888 buffer (only contains 6 palette colors)
  * @param width: Image width
  * @param height: Image height
  * @param Xstart: X offset in Paint buffer
@@ -748,7 +748,7 @@ UBYTE GUI_DirectDisplay_RGB888_6Color(const uint8_t *rgb888_buffer,
             uint8_t b = pixel[2];
 
             // Map dithered RGB to 6-color palette index
-            // Floyd-Steinberg palette: Black, White, Red, Green, Blue, Yellow
+            // Dither engine outputs standard RGB values: Black, White, Red, Green, Blue, Yellow
             UBYTE color;
             if (r == 0 && g == 0 && b == 0) {
                 color = 0; // Black
